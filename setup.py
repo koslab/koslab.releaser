@@ -40,6 +40,6 @@ setup(name='koslab.releaser',
           # -*- Extra requirements: -*-
       ],
       entry_points={
-          'console_scripts': ['releaser=koslab.releaser.releaser:main']
+          'console_scripts': ['koslab-releaser=koslab.releaser.releaser:main']
       }
 )

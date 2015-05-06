@@ -5,6 +5,7 @@ import shutil
 from ConfigParser import ConfigParser
 from StringIO import StringIO
 import argh
+from datetime import datetime
 import logging
 logger = logging.getLogger('koslab.releaser')
 
@@ -17,7 +18,7 @@ class Releaser(object):
         self.sourcesdir = sourcesdir
         self.releasercmd = releasercmd
 
-    def release(self):
+    def release(self, prompt=True):
         directory = self.buildoutdir
         sourcesdir = self.sourcesdir
          
@@ -28,7 +29,7 @@ class Releaser(object):
             retval = p.wait()
             out = p.stdout.read()
             if 'Back to development:' in out:
-                print "Skipping %s" % package
+                logger.info("Skipping %s" % package)
                 p = subprocess.Popen(['git','log','-2','--skip=1'], stdout=subprocess.PIPE)
                 retval = p.wait()
                 out = p.stdout.read()
@@ -40,17 +41,25 @@ class Releaser(object):
                         break;
                 continue
         
-            print "Releasing %s" % package
-            os.system('git log | head -n 50')
-            releaseme = raw_input('Release %s? (y/N/abort)' % package)
-            if releaseme.lower().strip() == 'y':
-                versions[package] = utils.cleanup_version(
-                    BaseVersionControl()._extract_version()
-                )
-                os.system(self.releasercmd)
-            elif releaseme.lower().strip().startswith('a'):
-                sys.exit(1)
+            if prompt:
+                logger.info("Releasing %s" % package)
+                os.system('git log | head -n 50')
+                releaseme = raw_input('Release %s? (y/N/abort)' % package)
+                if releaseme.lower().strip().startswith('a'):
+                    sys.exit(1)
+                elif releaseme.lower().strip() == 'y':
+                    versions[package] = self._release(package)
+            else:
+                versions[package] = self._release(package)
         return versions
+
+
+    def _release(self, package):
+        version = utils.cleanup_version(
+            BaseVersionControl()._extract_version()
+        )
+        os.system(self.releasercmd)
+        return version
        
     def write_versionsfile(self, versions):
  
@@ -74,10 +83,66 @@ class Releaser(object):
         
         result = stream.getvalue()
         open(versionfile, 'w').write(result)
-        print result
+        logger.info(result)
         
     def run(self):
         versions = self.release()
+        self.write_versionsfile(versions)
+
+class DevelopmentReleaser(Releaser):
+
+    def __init__(self, buildoutdir, sourcesdir, outputdir,
+                    packages=None, releasercmd='python setup.py sdist'):
+        super(DevelopmentReleaser, self).__init__(
+            buildoutdir, sourcesdir, packages, releasercmd
+        )
+        self.outputdir = outputdir
+
+    def _release(self, packagename):
+        config = ConfigParser()
+        origcfg = None
+
+        if os.path.exists('setup.cfg'):
+            origcfg = open('setup.cfg', 'r').read()
+            config.readfp(open('setup.cfg'))
+
+        if not config.has_section('egg_info'):
+            config.add_section('egg_info')
+        config.set('egg_info', 'tag_date', 'true')
+        config.set('egg_info', 'tag_build', 'dev')
+
+        if not config.has_section('sdist'):
+            config.add_section('sdist')
+        config.set('sdist', 'formats', 'zip')
+
+
+        stream = StringIO()
+        config.write(stream)
+        open('setup.cfg', 'w').write(stream.getvalue())
+        os.system(self.releasercmd)
+        if origcfg is not None:
+            open('setup.cfg', 'w').write(origcfg)
+        else:
+            os.remove('setup.cfg')
+        version = utils.cleanup_version(
+            BaseVersionControl()._extract_version()
+        )
+
+        date = datetime.now().strftime('%Y%m%d')
+        version = '%sdev-%s' % (version, date)
+
+        zipfile = '%s-%s.zip' % (packagename, version)
+        outputdir = os.path.join(self.buildoutdir, self.outputdir)
+        if not os.path.exists(outputdir):
+            os.mkdir(outputdir)
+        shutil.move(
+            os.path.join(os.getcwd(), 'dist', zipfile), 
+            os.path.join(outputdir, zipfile)
+        )
+        return version
+
+    def run(self):
+        versions = self.release(prompt=False)
         self.write_versionsfile(versions)
 
 @argh.arg('buildoutdir')
@@ -86,8 +151,15 @@ class Releaser(object):
 def release(buildoutdir, sourcesdir, packages):
     Releaser(buildoutdir, sourcesdir, packages).run()
 
+@argh.arg('buildoutdir')
+@argh.arg('sourcesdir')
+@argh.arg('outputdir')
+@argh.arg('packages', nargs='+')
+def devrelease(buildoutdir, sourcesdir, outputdir, packages):
+    DevelopmentReleaser(buildoutdir, sourcesdir, outputdir, packages).run()
+
 parser = argh.ArghParser()
-parser.add_commands([release])
+parser.add_commands([release, devrelease])
 
 def main():
     parser.dispatch()
