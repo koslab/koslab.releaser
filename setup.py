@@ -4,7 +4,7 @@ import os
 version = '0.1'
 
 long_description = (
-    open('README.txt').read()
+    open('README.rst').read()
     + '\n' +
     'Contributors\n'
     '============\n'
@@ -26,7 +26,7 @@ setup(name='koslab.releaser',
       keywords='',
       author='',
       author_email='',
-      url='http://svn.plone.org/svn/collective/',
+      url='http://github.com/koslab/koslab.releaser/',
       license='gpl',
       packages=find_packages('src'),
       package_dir = {'': 'src'},
@@ -35,9 +35,11 @@ setup(name='koslab.releaser',
       zip_safe=False,
       install_requires=[
           'setuptools',
+          'zest.releaser',
+          'argh',
           # -*- Extra requirements: -*-
       ],
-      entry_points="""
-      # -*- Entry points: -*-
-      """,
-      )
+      entry_points={
+          'console_scripts': ['releaser=koslab.releaser.releaser:main']
+      }
+)
