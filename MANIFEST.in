@@ -1,0 +1,5 @@
+recursive-include koslab *
+include *.txt
+include *.rst
+recursive-include docs *
+global-exclude *pyc
